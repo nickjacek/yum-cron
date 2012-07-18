@@ -1029,7 +1029,7 @@ def main(options = None):
         sys.exit(1)
 
     # Populate the values into  the opts object
-    opts.populate(confparser, 'main')
+    opts.populate(confparser, 'commands')
     opts.populate(confparser, 'emitters')
     opts.populate(confparser, 'email')
 
