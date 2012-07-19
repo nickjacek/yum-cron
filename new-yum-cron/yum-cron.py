@@ -867,10 +867,6 @@ class YumCronBase(yum.YumBase):
                 self.updateMetadata.add(md)
                 md.close()
 
-    def populateUpdates(self):
-        """Retrieve and set up information about the updates available
-        for installed packages.
-        """
     def refreshUpdates(self):
         try:
             # figure out the updates
