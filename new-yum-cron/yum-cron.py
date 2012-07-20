@@ -730,6 +730,16 @@ class YumCronBase(yum.YumBase):
         self.updateInfo = []
         self.updateInfoTime = None
 
+    def randomSleep(self, duration):
+        """Sleep for a random amount of time up to *duration*.
+        
+        :param duration: the maximum amount of time to sleep, in
+           minutes.  The actual time slept will be between 0 and
+           *duration* minutes
+           """
+        if duration > 0:
+            sleep(random() * 60 * duration)
+
     def doSetup(self):
         """Perform set up, including setting up directories and
         parsing options.
@@ -781,6 +791,48 @@ class YumCronBase(yum.YumBase):
             return False
         if res != 2:
             self.emitCheckFailed("Failed to build transaction: %s" %(str.join("\n", resmsg),))
+            return False
+        return True
+
+    def populateUpdateMetadata(self):
+        """Populate the metadata for the packages in the update."""
+
+        self.updateMetadata = UpdateMetadata()
+        repos = []
+
+        for (new, old) in self.up.getUpdatesTuples():
+            pkg = self.getPackageObject(new)
+            if pkg.repoid not in repos:
+                repo = self.repos.getRepo(pkg.repoid)
+                repos.append(repo.id)
+                try: # grab the updateinfo.xml.gz from the repodata
+                    md = repo.retrieveMD('updateinfo')
+                except Exception: # can't find any; silently move on
+                    continue
+                md = gzip.open(md)
+                self.updateMetadata.add(md)
+                md.close()
+
+    def refreshUpdates(self):
+        try:
+            # figure out the updates
+            for (new, old) in self.up.getUpdatesTuples():
+                updating = self.getPackageObject(new)
+                updated = self.rpmdb.searchPkgTuple(old)[0]
+            
+                self.tsInfo.addUpdate(updating, updated)
+
+            # and the obsoletes
+            if self.conf.obsoletes:
+                for (obs, inst) in self.up.getObsoletesTuples():
+                    obsoleting = self.getPackageObject(obs)
+                    installed = self.rpmdb.searchPkgTuple(inst)[0]
+                
+                    self.tsInfo.addObsoleting(obsoleting, installed)
+                    self.tsInfo.addObsoleted(installed, obsoleting)
+
+        except Exception, e:
+            self.emitCheckFailed("%s" %(e,))
             return False
         return True
 
@@ -847,59 +899,6 @@ class YumCronBase(yum.YumBase):
         self.emitInstalled()
         self.emitMessages()
         return True
-
-    def populateUpdateMetadata(self):
-        """Populate the metadata for the packages in the update."""
-
-        self.updateMetadata = UpdateMetadata()
-        repos = []
-
-        for (new, old) in self.up.getUpdatesTuples():
-            pkg = self.getPackageObject(new)
-            if pkg.repoid not in repos:
-                repo = self.repos.getRepo(pkg.repoid)
-                repos.append(repo.id)
-                try: # grab the updateinfo.xml.gz from the repodata
-                    md = repo.retrieveMD('updateinfo')
-                except Exception: # can't find any; silently move on
-                    continue
-                md = gzip.open(md)
-                self.updateMetadata.add(md)
-                md.close()
-
-    def refreshUpdates(self):
-        try:
-            # figure out the updates
-            for (new, old) in self.up.getUpdatesTuples():
-                updating = self.getPackageObject(new)
-                updated = self.rpmdb.searchPkgTuple(old)[0]
-            
-                self.tsInfo.addUpdate(updating, updated)
-
-            # and the obsoletes
-            if self.conf.obsoletes:
-                for (obs, inst) in self.up.getObsoletesTuples():
-                    obsoleting = self.getPackageObject(obs)
-                    installed = self.rpmdb.searchPkgTuple(inst)[0]
-                
-                    self.tsInfo.addObsoleting(obsoleting, installed)
-                    self.tsInfo.addObsoleted(installed, obsoleting)
-
-        except Exception, e:
-            self.emitCheckFailed("%s" %(e,))
-            return False
-        return True
-
-    def randomSleep(self, duration):
-        """Sleep for a random amount of time up to *duration*.
-        
-        :param duration: the maximum amount of time to sleep, in
-           minutes.  The actual time slept will be between 0 and
-           *duration* minutes
-           """
-        if duration > 0:
-            sleep(random() * 60 * duration)
-
 
     def updatesCheck(self):
         """Check to see whether updates are available for any
