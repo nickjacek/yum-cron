@@ -120,6 +120,23 @@ class UpdateEmitter(object):
                            % errmsg)
         self.sendMessages()
 
+    def groupError(self, errmsg):
+        """Emitted when there is an error checking for group updates.
+
+        :param errmsgs: a string that contains the error message
+        """
+        self.output.append("Error checking for group updates: \n%s" 
+                           % errmsg)
+
+    def groupFailed(self, errmsg):
+        """Emitted when checking for group updates failed.
+
+        :param errmsgs: a string that contains the error message
+        """
+        self.output.append("Failed to check for updates with the following error message: \n%s" 
+                           % errmsg)
+        self.sendMessages()
+
     def downloadFailed(self, errmsg):
         """Emitted when an update has failed to install.
 
@@ -706,6 +723,8 @@ class YumCronConfig(BaseConfig):
     apply_updates = BoolOption(False)
     download_updates = BoolOption(False)
     yum_config_file = Option("/etc/yum.conf")
+    group_list = ListOption([])
+    group_package_types = ListOption(['mandatory', 'default'])
 
 
 class YumCronBase(yum.YumBase):
@@ -764,11 +783,7 @@ class YumCronBase(yum.YumBase):
             # If there are any exceptions, send a message about them,
             # and return False
             self.emitSetupFailed('%s' % e)
-            return False
-
-        else:
-            # If there are no errors, return True
-            return True
+            sys.exit(1)
 
     def acquireLock(self):
         """ Wrapper method around doLock to emit errors correctly.
@@ -779,20 +794,17 @@ class YumCronBase(yum.YumBase):
             self.doLock()
         except yum.Errors.LockError, e:
             self.emitLockFailed("%s" % e)
-            return False
-        else:
-            return True
+            sys.exit(1)
 
     def findDeps(self):
         try:
             (res, resmsg) = self.buildTransaction()
         except yum.Errors.RepoError, e:
             self.emitCheckFailed("%s" %(e,))
-            return False
+            sys.exit()
         if res != 2:
             self.emitCheckFailed("Failed to build transaction: %s" %(str.join("\n", resmsg),))
-            return False
-        return True
+            sys.exit(1)
 
     def populateUpdateMetadata(self):
         """Populate the metadata for the packages in the update."""
@@ -815,8 +827,14 @@ class YumCronBase(yum.YumBase):
 
     def refreshUpdates(self):
         try:
+            updatesTuples = self.up.getUpdatesTuples()
+            # If there are no updates, return False
+            if not updatesTuples:
+                return False
+
             # figure out the updates
-            for (new, old) in self.up.getUpdatesTuples():
+            for (new, old) in updatesTuples:
+                updates_available = True
                 updating = self.getPackageObject(new)
                 updated = self.rpmdb.searchPkgTuple(old)[0]
             
@@ -833,8 +851,48 @@ class YumCronBase(yum.YumBase):
 
         except Exception, e:
             self.emitCheckFailed("%s" %(e,))
+            sys.exit(1)
+
+        else:
+            return True
+
+    def refreshGroupUpdates(self):
+        """Check for group updates, and add them to the
+        transaction.
+
+        :return: Boolean indicating whether there are any updates to
+           the group available
+        """
+        update_available = False
+        try:
+            for group_string in self.opts.group_list:
+                group_matched = False
+                for group in self.comps.return_groups(group_string):
+                    group_matched = True
+                    try:
+                        txmbrs = self.selectGroup(group.groupid,
+                                                  self.opts.group_package_types,
+                                                  upgrade=True)
+                        
+                        # If updates are available from a previous
+                        # group, or there are updates are available
+                        # from this group, set update_available to True
+                        update_available |= (txmbrs != [])
+                        
+                    except yum.Errors.GroupsError:
+                        self.emitGroupError('Warning: Group %s does not exist.' % group_string)
+                        continue
+
+                if not group_matched:
+                    self.emitGroupError('Warning: Group %s does not exist.' % group_string)
+                    continue
+
+        except Exception, e:
+            self.emitGroupFailed("%s" % e)
             return False
-        return True
+
+        else:
+            return update_available
 
     def downloadUpdates(self, emit):
         # Emit a message that that updates will be downloaded
@@ -848,14 +906,13 @@ class YumCronBase(yum.YumBase):
             self.downloadPkgs(dlpkgs)
         except Exception, e:
             self.emitDownloadFailed("%s" % e)
-            return False
+            sys.exit(1)
         else :
             # Emit a message that the packages have been downloaded
             # successfully
             if emit :
                 self.emitDownloaded()
                 self.emitMessages()
-        return True
 
     def installUpdates(self, emit):
         """Apply the available updates.
@@ -894,11 +951,10 @@ class YumCronBase(yum.YumBase):
         except yum.Errors.YumBaseError, err:
             
             self.emitUpdateFailed([str(err)])
-            return False
+            sys.exit(1)
 
         self.emitInstalled()
         self.emitMessages()
-        return True
 
     def updatesCheck(self):
         """Check to see whether updates are available for any
@@ -912,28 +968,22 @@ class YumCronBase(yum.YumBase):
         self.randomSleep(self.opts.random_sleep)
 
         # Perform the initial setup
-        if not self.doSetup():
-            sys.exit(1)
+        self.doSetup()
 
         # Acquire the yum lock
-        if not self.acquireLock():
-            sys.exit(1)
+        self.acquireLock()
 
         # Update the metadata
         self.populateUpdateMetadata()
 
         # Exit if we don't need to send messages, or there are no
         # updates
-        if not self.opts.update_messages or not self.up.getUpdatesTuples():
-            sys.exit(1)
-
-        # Find what packages should be updated
-        if not self.refreshUpdates():
-            sys.exit(1)
+        if not (self.opts.update_messages and (self.refreshUpdates()
+                                             or self.refreshGroupUpdates())):
+                sys.exit(0)
 
         # Build the transaction to find the additional dependencies
-        if not self.findDeps():
-            sys.exit(1)
+        self.findDeps()
 
         # download if set up to do so, else tell about the updates and exit
         if not self.opts.download_updates:
@@ -942,17 +992,15 @@ class YumCronBase(yum.YumBase):
             self.releaseLocks()
             sys.exit(0)
 
-        if not self.downloadUpdates(not self.opts.apply_updates):
-            sys.exit(1)
-
+        self.downloadUpdates(not self.opts.apply_updates)
+        
         # now apply if we're set up to do so; else just tell that things are
         # available
         if not self.opts.apply_updates:
             self.releaseLocks()
             sys.exit(0)
 
-        if not self.installUpdates(True):
-            sys.exit(1)
+        self.installUpdates(True)
 
         self.releaseLocks()
         sys.exit(0)
@@ -996,6 +1044,16 @@ class YumCronBase(yum.YumBase):
         """Emit a notice stating that checking for updates failed."""
         map(lambda x: x.checkFailed(error), self.emitters)
 
+    def emitGroupError(self, error):
+        """Emit a notice stating that there was an error checking for
+        group updates.
+        """
+        map(lambda x: x.groupError(error), self.emitters)
+
+    def emitGroupFailed(self, error):
+        """Emit a notice stating that checking for group updates failed."""
+        map(lambda x: x.groupFailed(error), self.emitters)
+
     def emitDownloadFailed(self, error):
         """Emit a notice stating that downloading the updates failed."""
         map(lambda x: x.downloadFailed(error), self.emitters)
@@ -1027,10 +1085,14 @@ def main(options = None):
     opts.populate(confparser, 'commands')
     opts.populate(confparser, 'emitters')
     opts.populate(confparser, 'email')
+    opts.populate(confparser, 'groups')
 
     #If the system name is not given, set it by getting the hostname
     if opts.system_name == 'None' :
         opts.system_name = gethostname()
+
+    if 'None' in opts.group_list:
+        opts.group_list = []
 
     # Create the base object 
     base = YumCronBase(opts)
