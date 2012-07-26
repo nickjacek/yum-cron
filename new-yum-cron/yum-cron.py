@@ -796,16 +796,6 @@ class YumCronBase(yum.YumBase):
             self.emitLockFailed("%s" % e)
             sys.exit(1)
 
-    def findDeps(self):
-        try:
-            (res, resmsg) = self.buildTransaction()
-        except yum.Errors.RepoError, e:
-            self.emitCheckFailed("%s" %(e,))
-            sys.exit()
-        if res != 2:
-            self.emitCheckFailed("Failed to build transaction: %s" %(str.join("\n", resmsg),))
-            sys.exit(1)
-
     def populateUpdateMetadata(self):
         """Populate the metadata for the packages in the update."""
 
@@ -893,6 +883,16 @@ class YumCronBase(yum.YumBase):
 
         else:
             return update_available
+
+    def findDeps(self):
+        try:
+            (res, resmsg) = self.buildTransaction()
+        except yum.Errors.RepoError, e:
+            self.emitCheckFailed("%s" %(e,))
+            sys.exit()
+        if res != 2:
+            self.emitCheckFailed("Failed to build transaction: %s" %(str.join("\n", resmsg),))
+            sys.exit(1)
 
     def downloadUpdates(self, emit):
         # Emit a message that that updates will be downloaded
