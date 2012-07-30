@@ -24,7 +24,6 @@ sys.path.append('/usr/share/yum-cli')
 import callback
 
 config_file = '/home/nick/yum/new-yum-cron/yum-cron.conf'
-initial_directory = os.getcwd()
 
 class UpdateEmitter(object):
     """Abstract class for implementing different types of
