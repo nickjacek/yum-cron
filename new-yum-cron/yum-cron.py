@@ -23,7 +23,7 @@ from time import sleep
 sys.path.append('/usr/share/yum-cli')
 import callback
 
-config_file = '/home/nick/yum/new-yum-cron/yum-cron.conf'
+default_config_file = '/home/nick/yum/new-yum-cron/yum-cron.conf'
 
 class UpdateEmitter(object):
     """Abstract class for implementing different types of
@@ -729,14 +729,17 @@ class YumCronConfig(BaseConfig):
 class YumCronBase(yum.YumBase):
     """Class to implement the update checking daemon."""
 
-    def __init__(self, opts):
+    def __init__(self, config_file_name = None):
         """Create a YumCronBase object, and perform initial setup.
 
         :param opts: :class:`YumCronConfig` object containing the
            configuration options
         """
         yum.YumBase.__init__(self)
-        self.opts = opts
+
+        # Read the config file
+        self.readConfigFile(config_file_name)
+
 
         # Create the emitters, and add them to the list
         self.emitters = []
@@ -747,6 +750,42 @@ class YumCronBase(yum.YumBase):
 
         self.updateInfo = []
         self.updateInfoTime = None
+
+    def readConfigFile(self, config_file_name = None):
+        """Reads the given config file, or if none is given, the
+        default config file.
+
+        :param config_file_name: a String specifying the name of the
+           config file to read.
+        """
+        # Create ConfigParser and UDConfig Objects
+        confparser = ConfigParser()
+        self.opts = YumCronConfig()
+
+        #If no config file name is given, fall back to the default
+        if config_file_name == None:
+            config_file_name = default_config_file
+            
+        # Attempt to read the config file.  confparser.read will return a
+        # list of the files that were read successfully, so check that it
+        # contains config_file
+        if config_file_name not in confparser.read(config_file_name):
+            print >> sys.stderr, "Error reading config file"
+            sys.exit(1)
+
+        # Populate the values into  the opts object
+        self.opts.populate(confparser, 'commands')
+        self.opts.populate(confparser, 'emitters')
+        self.opts.populate(confparser, 'email')
+        self.opts.populate(confparser, 'groups')
+
+        #If the system name is not given, set it by getting the hostname
+        if self.opts.system_name == 'None' :
+            self.opts.system_name = gethostname()
+
+        if 'None' in self.opts.group_list:
+            self.opts.group_list = []
+
 
     def randomSleep(self, duration):
         """Sleep for a random amount of time up to *duration*.
@@ -1066,35 +1105,14 @@ class YumCronBase(yum.YumBase):
         map(lambda x: x.sendMessages(), self.emitters)
 
 
-def main(options = None):
+def main():
     """Configure and start the daemon."""
-
-    # Create ConfigParser and UDConfig Objects
-    confparser = ConfigParser()
-    opts = YumCronConfig()
-
-    # Attempt to read the config file.  confparser.read will return a
-    # list of the files that were read successfully, so check that it
-    # contains config_file
-    if config_file not in confparser.read(config_file):
-        print >> sys.stderr, "Error reading config file"
-        sys.exit(1)
-
-    # Populate the values into  the opts object
-    opts.populate(confparser, 'commands')
-    opts.populate(confparser, 'emitters')
-    opts.populate(confparser, 'email')
-    opts.populate(confparser, 'groups')
-
-    #If the system name is not given, set it by getting the hostname
-    if opts.system_name == 'None' :
-        opts.system_name = gethostname()
-
-    if 'None' in opts.group_list:
-        opts.group_list = []
-
-    # Create the base object 
-    base = YumCronBase(opts)
+    # If a file name was passed in, use it as the config file name.
+    base = None
+    if len(sys.argv) > 1:
+        base = YumCronBase(sys.argv[1])
+    else:
+        base = YumCronBase()
 
     #Run the update check
     base.updatesCheck()
