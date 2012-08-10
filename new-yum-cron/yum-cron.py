@@ -26,8 +26,10 @@ import callback
 default_config_file = '/home/nick/yum/new-yum-cron/yum-cron.conf'
 
 class UpdateEmitter(object):
-    """Abstract class for implementing different types of
-       emitters.
+    """Abstract class for implementing different types of emitters.
+       Most methods will add certain messages the output list.  Then,
+       the sendMessage method can be overridden in a subclass to
+       combine these messages and transmit them as required.
     """
 
     def __init__(self, opts):
@@ -35,65 +37,50 @@ class UpdateEmitter(object):
         self.output = []
 
     def updatesAvailable(self, tsInfo):
-        """Emitted when there are updates available to be installed.
-        If not doing the download here, then called immediately on finding
-        new updates.  If we do the download here, then called after the
-        updates have been downloaded.
+        """Appends a message to the output list stating that there are
+        updates available.
 
-        :param updateInfo: a list of tuples of dictionaries.  Each
-           dictionary contains information about a package, and each
-           tuple specifies an available upgrade: the second dictionary
-           in the tuple has information about a package that is
-           currently installed, and the first dictionary has
-           information what the package can be upgraded to
+        :param tsInfo: A :class:`yum.transactioninfo.TransactionData`
+           instance that contains information about the transaction.
         """
         self.output.append('The following updates are available on %s:' % self.opts.system_name)
         self.output.append(self._formatTransaction(tsInfo))
 
     def updatesDownloading(self, tsInfo):
-        """Emitted to give feedback of update download starting.
+        """Append a message to the output list stating that
+        downloading updates has started.
 
-        :param updateInfo: a list of tuples of dictionaries.  Each
-           dictionary contains information about a package, and each
-           tuple specifies an available upgrade: the second dictionary
-           in the tuple has information about a package that is
-           currently installed, and the first dictionary has
-           information what the package can be upgraded to
+        :param tsInfo: A :class:`yum.transactioninfo.TransactionData`
+           instance that contains information about the transaction.
         """
         self.output.append('The following updates will be downloaded on %s:' % self.opts.system_name)
         self.output.append(self._formatTransaction(tsInfo))
 
     def updatesDownloaded(self):
-        """Emitted to give feedback of update download starting.
-
-        :param updateInfo: a list of tuples of dictionaries.  Each
-           dictionary contains information about a package, and each
-           tuple specifies an available upgrade: the second dictionary
-           in the tuple has information about a package that is
-           currently installed, and the first dictionary has
-           information what the package can be upgraded to
+        """Append a message to the output list stating that updates
+        have been downloaded successfully.
         """
         self.output.append("Updates downloaded successfully.")
 
     def updatesInstalling(self, tsInfo):
-        """Emitted to give feedback of update download starting."""
+        """Append a message to the output list stating that
+        installing updates has started.
+
+        :param tsInfo: A :class:`yum.transactioninfo.TransactionData`
+           instance that contains information about the transaction.
+        """
         self.output.append('The following updates will be applied on %s:' % self.opts.system_name)
         self.output.append(self._formatTransaction(tsInfo))
 
     def updatesInstalled(self):
-        """Emitted on successful installation of updates.
-
-        :param updateInfo: a list of tuples of dictionaries.  Each
-           dictionary contains information about a package, and each
-           tuple specifies an available upgrade: the second dictionary
-           in the tuple has information about a package that is
-           currently installed, and the first dictionary has
-           information what the package can be upgraded to
+        """Append a message to the output list stating that updates
+        have been installed successfully.
         """
         self.output.append('The updates were sucessfully applied')
 
     def setupFailed(self, errmsg):
-        """Emitted when plugin initialization failed.
+        """Append a message to the output list stating that setup
+        failed, and then call sendMessages to emit the output.
 
         :param errmsgs: a string that contains the error message
         """
@@ -102,7 +89,9 @@ class UpdateEmitter(object):
         self.sendMessages()
 
     def lockFailed(self, errmsg):
-        """Emitted when plugin initialization failed.
+        """Append a message to the output list stating that the
+        program failed to acquire the yum lock, then call sendMessages
+        to emit the output.
 
         :param errmsg: a string that contains the error message
         """
@@ -111,7 +100,8 @@ class UpdateEmitter(object):
         self.sendMessages()
 
     def checkFailed(self, errmsg):
-        """Emitted when checking for updates failed.
+        """Append a message to the output stating that checking for
+        updates failed, then call sendMessages to emit the output.
 
         :param errmsgs: a string that contains the error message
         """
@@ -120,7 +110,8 @@ class UpdateEmitter(object):
         self.sendMessages()
 
     def groupError(self, errmsg):
-        """Emitted when there is an error checking for group updates.
+        """Append a message to the output list stating that an error
+        was encountered while checking for group updates.
 
         :param errmsgs: a string that contains the error message
         """
@@ -128,7 +119,8 @@ class UpdateEmitter(object):
                            % errmsg)
 
     def groupFailed(self, errmsg):
-        """Emitted when checking for group updates failed.
+        """Append a message to the output list stating that checking
+        for group updates failed, then call sendMessages to emit the output.
 
         :param errmsgs: a string that contains the error message
         """
@@ -137,7 +129,8 @@ class UpdateEmitter(object):
         self.sendMessages()
 
     def downloadFailed(self, errmsg):
-        """Emitted when an update has failed to install.
+        """Append a message to the output list stating that
+        downloading updates failed, then call sendMessages to emit the output.
 
         :param errmsgs: a string that contains the error message
         """
@@ -146,7 +139,8 @@ class UpdateEmitter(object):
         self.sendMessages()
         
     def updatesFailed(self, errmsg):
-        """Emitted when an update has failed to install.
+        """Append a message to the output list stating that installing
+        updates failed, then call sendMessages to emit the output.
 
         :param errmsgs: a string that contains the error message
         """
@@ -161,7 +155,7 @@ class UpdateEmitter(object):
         """
         pass
 
-    def format_number(self, number, SI=0, space=' '):
+    def _format_number(self, number, SI=0, space=' '):
         """Return a human-readable metric-like string representation
         of a number.
 
@@ -209,7 +203,7 @@ class UpdateEmitter(object):
     
         return(format % (float(number or 0), space, symbols[depth]))
 
-    def fmtColumns(self, columns, msg=u'', end=u'', text_width=utf8_width):
+    def _fmtColumns(self, columns, msg=u'', end=u'', text_width=utf8_width):
         """Return a row of data formatted into a string for output.
         Items can overflow their columns. 
 
@@ -417,7 +411,7 @@ class UpdateEmitter(object):
             # in human-readable form
             evr = po.printVer()
             repoid = po.ui_from_repo
-            size = self.format_number(float(po.size))
+            size = self._format_number(float(po.size))
 
             if a is None: # gpgkeys are weird
                 a = 'noarch'
@@ -489,7 +483,7 @@ class UpdateEmitter(object):
 %s
 %s
 """ % ('=' * self.opts.output_width,
-       self.fmtColumns(((_('Package'), -n_wid), (_('Arch'), -a_wid),
+       self._fmtColumns(((_('Package'), -n_wid), (_('Arch'), -a_wid),
                         (_('Version'), -v_wid), (_('Repository'), -r_wid),
                         (_('Size'), s_wid)), u" "),
        '=' * self.opts.output_width)]
@@ -506,7 +500,7 @@ class UpdateEmitter(object):
             for (n, a, evr, repoid, size, obsoletes) in lines:
                 columns = ((n,   -n_wid), (a,      -a_wid),
                            (evr, -v_wid), (repoid, -r_wid), (size, s_wid))
-                msg = self.fmtColumns(columns, u" ", u"\n")
+                msg = self._fmtColumns(columns, u" ", u"\n")
                 for obspo in sorted(obsoletes):
                     appended = _('     replacing  %s.%s %s\n')
                     appended %= (obspo.name,
@@ -591,49 +585,35 @@ class EmailEmitter(UpdateEmitter):
         self.subject = ""
 
     def updatesAvailable(self, tsInfo):
-        """Emitted when there are updates available to be installed.
-        If not doing the download here, then called immediately on finding
-        new updates.  If we do the download here, then called after the
-        updates have been downloaded.
+        """Appends a message to the output list stating that there are
+        updates available, and set an appropriate subject line.
 
-        :param updateInfo: a list of tuples of dictionaries.  Each
-           dictionary contains information about a package, and each
-           tuple specifies an available upgrade: the second dictionary
-           in the tuple has information about a package that is
-           currently installed, and the first dictionary has
-           information what the package can be upgraded to
+        :param tsInfo: A :class:`yum.transactioninfo.TransactionData`
+           instance that contains information about the transaction.
         """
         super(EmailEmitter, self).updatesAvailable(tsInfo)
         self.subject = "Yum: Updates Available on %s" % self.opts.system_name
 
     def updatesDownloaded(self):
-        """Emitted to give feedback of update download starting.
-
-        :param updateInfo: a list of tuples of dictionaries.  Each
-           dictionary contains information about a package, and each
-           tuple specifies an available upgrade: the second dictionary
-           in the tuple has information about a package that is
-           currently installed, and the first dictionary has
-           information what the package can be upgraded to
+        """Append a message to the output list stating that updates
+        have been downloaded successfully, and set an appropriate
+        subject line.
         """
         self.subject = "Yum: Updates downloaded on %s" % self.opts.system_name
         super(EmailEmitter, self).updatesDownloaded()
 
     def updatesInstalled(self):
-        """Emitted on successful installation of updates.
-
-        :param updateInfo: a list of tuples of dictionaries.  Each
-           dictionary contains information about a package, and each
-           tuple specifies an available upgrade: the second dictionary
-           in the tuple has information about a package that is
-           currently installed, and the first dictionary has
-           information what the package can be upgraded to
+        """Append a message to the output list stating that updates
+        have been installed successfully, and set an appropriate
+        subject line.
         """
         self.subject = "Yum: Updates installed on %s" % self.opts.system_name
         super(EmailEmitter, self).updatesInstalled()
 
     def setupFailed(self, errmsg):
-        """Emitted when plugin initialization failed.
+        """Append a message to the output list stating that setup
+        failed, and then call sendMessages to emit the output, and set
+        an appropriate subject line.
 
         :param errmsgs: a string that contains the error message
         """
@@ -641,7 +621,9 @@ class EmailEmitter(UpdateEmitter):
         super(EmailEmitter, self).setupFailed(errmsg)
 
     def lockFailed(self, errmsg):
-        """Emitted when plugin initialization failed.
+        """Append a message to the output list stating that the
+        program failed to acquire the yum lock, then call sendMessages
+        to emit the output, and set an appropriate subject line.
 
         :param errmsg: a string that contains the error message
         """
@@ -649,7 +631,9 @@ class EmailEmitter(UpdateEmitter):
         super(EmailEmitter, self).lockFailed(errmsg)
 
     def checkFailed(self, errmsg):
-        """Emitted when checking for updates failed.
+        """Append a message to the output stating that checking for
+        updates failed, then call sendMessages to emit the output, and
+        set an appropriate subject line.
 
         :param errmsgs: a string that contains the error message
         """
@@ -657,15 +641,19 @@ class EmailEmitter(UpdateEmitter):
         super(EmailEmitter, self).checkFailed(errmsg)
 
     def downloadFailed(self, errmsg):
-        """Emitted when plugin initialization failed.
+        """Append a message to the output list stating that checking
+        for group updates failed, then call sendMessages to emit the
+        output, and add an appropriate subject line.
 
-        :param errmsg: a string that contains the error message
+        :param errmsgs: a string that contains the error message
         """
         self.subject = "Yum: Failed to download updates on %s" % self.opts.system_name
         super(EmailEmitter, self).lockFailed(errmsg)
 
     def updatesFailed(self, errmsg):
-        """Emitted when an update has failed to install.
+        """Append a message to the output list stating that installing
+        updates failed, then call sendMessages to emit the output, and
+        add an appropriate subject line.
 
         :param errmsgs: a string that contains the error message
         """
@@ -673,14 +661,8 @@ class EmailEmitter(UpdateEmitter):
         super(EmailEmitter, self).updatesFailed(errmsg)
 
     def sendMessages(self):
-        """Emit a message stating that updates are available.
-
-        :param updateInfo: a list of tuples of dictionaries.  Each
-           dictionary contains information about a package, and each
-           tuple specifies an available upgrade: the second dictionary
-           in the tuple has information about a package that is
-           currently installed, and the first dictionary has
-           information what the package can be upgraded to
+        """Combine the stored messages that have been stored into a
+        single email message, and send this message.
         """
         # Build up the email to be sent
         msg = MIMEText(''.join(self.output))
@@ -702,6 +684,9 @@ class StdIOEmitter(UpdateEmitter):
         super(StdIOEmitter, self).__init__(opts)
         
     def sendMessages(self) :
+        """Combine the stored messages that have been stored into a
+        single email message, and send this message to standard output.
+        """
         print "".join(self.output)
 
 
@@ -727,13 +712,13 @@ class YumCronConfig(BaseConfig):
 
 
 class YumCronBase(yum.YumBase):
-    """Class to implement the update checking daemon."""
+    """Main class to check for and apply the updates."""
 
     def __init__(self, config_file_name = None):
         """Create a YumCronBase object, and perform initial setup.
 
-        :param opts: :class:`YumCronConfig` object containing the
-           configuration options
+        :param config_file_name: a String specifying the name of the
+           config file to use.
         """
         yum.YumBase.__init__(self)
 
@@ -801,7 +786,7 @@ class YumCronBase(yum.YumBase):
         """Perform set up, including setting up directories and
         parsing options.
 
-        :return: boolean that indicates whether setup completes
+        :return: boolean that indicates whether setup has completed
            successfully
         """
         try :
@@ -824,10 +809,8 @@ class YumCronBase(yum.YumBase):
             sys.exit(1)
 
     def acquireLock(self):
-        """ Wrapper method around doLock to emit errors correctly.
-        
-        :return: whether the lock was acquired successfully
-        """
+        """ Wrapper method around doLock to emit errors correctly."""
+
         try:
             self.doLock()
         except yum.Errors.LockError, e:
@@ -854,6 +837,11 @@ class YumCronBase(yum.YumBase):
                 md.close()
 
     def refreshUpdates(self):
+        """Check whether updates are available.
+
+        :return: Boolean indicating whether any updates are
+           available
+        """
         try:
             updatesTuples = self.up.getUpdatesTuples()
             # If there are no updates, return False
@@ -923,6 +911,8 @@ class YumCronBase(yum.YumBase):
             return update_available
 
     def findDeps(self):
+        """Build the transaction to resolve the dependencies for the update."""
+
         try:
             (res, resmsg) = self.buildTransaction()
         except yum.Errors.RepoError, e:
@@ -933,6 +923,11 @@ class YumCronBase(yum.YumBase):
             sys.exit(1)
 
     def downloadUpdates(self, emit):
+        """Download the update.
+
+        :param emit: Boolean indicating whether to emit messages
+           about the download
+        """
         # Emit a message that that updates will be downloaded
         if emit :
             self.emitDownloading()
@@ -954,7 +949,9 @@ class YumCronBase(yum.YumBase):
 
     def installUpdates(self, emit):
         """Apply the available updates.
-
+        
+        :param emit: Boolean indicating whether to emit messages about
+           the installation
         """
         # Emit a message  that 
         if emit :
@@ -999,8 +996,6 @@ class YumCronBase(yum.YumBase):
         installed packages. If updates are available, install them,
         download them, or just emit a message, depending on what
         options are selected in the configuration file.
- 
-        :return: whether the daemon should continue looping
         """
         # Sleep a random time
         self.randomSleep(self.opts.random_sleep)
@@ -1106,7 +1101,7 @@ class YumCronBase(yum.YumBase):
 
 
 def main():
-    """Configure and start the daemon."""
+    """Configure and run the update check."""
     # If a file name was passed in, use it as the config file name.
     base = None
     if len(sys.argv) > 1:
